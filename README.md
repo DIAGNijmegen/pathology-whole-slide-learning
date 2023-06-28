@@ -1,8 +1,8 @@
 # pathology-whole-slide-learning
 Framework for weak whole slide learning with attention: compress and classify whole slide images.
-Requires ASAP and the wholeslidedata package and pathology-whole-slide-packer.
+Requires ASAP and the wholeslidedata package and optionally pathology-whole-slide-packer.
 
-Preprocessing: For slides bigger then ~50k pixels in height/width packing is recommend,
+Preprocessing: For slides bigger then ~50k pixels in height/width packing is recommended,
 as otherwise the gpu out of memory might occur.
 
 Steps:
