@@ -20,6 +20,8 @@ For compression several pretrained encoders are supported, i.e.
 Compression script: 
 wsilearn.compress.compress.py
 
+
+
 Classification script:
 wsilearn.train_nic_pl.py
 

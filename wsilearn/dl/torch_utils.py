@@ -1,6 +1,9 @@
 from pathlib import Path
 
 import functools
+
+from wsilearn.utils.df_utils import print_df
+
 print = functools.partial(print, flush=True)
 
 from wsilearn.utils.cool_utils import is_ndarray, CaptureOut, is_list_or_tuple, set_seed, is_string, is_callable, \

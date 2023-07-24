@@ -107,7 +107,7 @@ def df_stats(df, *cols, verbose=True):
         entries.append(entry)
     df = pd.DataFrame(entries)
     if verbose:
-        print_df(df)
+        print_df(df, showindex=False)
     return df
 
 def df_columns_starting_with(df, stri, not_starting=None):

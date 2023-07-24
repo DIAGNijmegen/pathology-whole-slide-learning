@@ -352,7 +352,7 @@ class AsapReader(MultiResolutionImage, SlideReader):
             raise InvalidSpacingError(self._image_path, 0, [], 0)
 
     def close(self, clear=True):
-        super(OpenSlide, self).close()
+        super(MultiResolutionImage, self).close()
         super(SlideReader, self).close(clear=clear)
 
 def _slide_info(path):
