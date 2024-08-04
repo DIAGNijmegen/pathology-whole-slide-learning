@@ -96,7 +96,7 @@ def create_combined_heatmaps(npz_dir, out_dir, train_type, wsi_dir=None, overwri
 class NicInference(object):
     def __init__(self, model_dir, pack=False, overwrite=False, no_links=False, hmraw=False,
                  compress_batch_size=32, compress_multiproc=False, compress_args=None, num_workers=0,
-                 skip_compression=False):
+                 skip_compression=False, flat=None, **kwargs):
         self.model_dir = Path(model_dir)
         self.overwrite = overwrite
         self.pack = pack
@@ -104,9 +104,18 @@ class NicInference(object):
         self.no_links = no_links
         self.hmraw = hmraw
 
-        results = read_json_dict(self.model_dir/ 'results.json')
-        self.clf_thresholds = results.get('validation',{}).get('clf_thresholds',None)
+        # self.clf_thresholds = None
+        # val_results_path = self.model_dir/'eval_validation/results.json'
+        # if val_results_path.exists():
+        #     results = read_json_dict(self.model_dir/'eval_validation/results.json')
+        #     self.clf_thresholds = results.get('validation',{}).get('clf_thresholds',None)
+        # else:
+        #     print('validation results not found')
         self.args = read_json_dict(self.model_dir/ 'args.json')
+        self.args.update(kwargs)
+        self.flat = self.args.pop('flat',False)
+        if flat is not None:
+            self.flat = flat
         self.train_type = self.args['train_type']
         self.target_names = self.args.get('class_names',self.args.get('target_names'))
 
@@ -149,7 +158,7 @@ class NicInference(object):
         compressed_path = Path(out_dir)/(Path(slide_path).stem+'.'+out_format)
         return compressed_path
 
-    def apply(self, slide_path=None, mask_path=None, compressed_path=None, out_dir=None, no_hm=False):
+    def apply(self, slide_path=None, mask_path=None, compressed_path=None, out_dir=None):
         if compressed_path is None and slide_path is None:
             raise ValueError('either slide or compressed have to be specified')
 
@@ -183,8 +192,8 @@ class NicInference(object):
         dfp = self._apply_loader(loader, out_dir)
 
         rec = dfp.to_dict('records')[0]
-        rec['compressed'] = compressed_path
-        if not no_hm:
+        rec['compressed'] = str(compressed_path)
+        if not self.args.get('no_heatmaps', False):
             hm_writer = HeatmapWriter(npz_dir=out_dir, overwrite=self.overwrite, no_links=self.no_links,
                                       hmraw=self.hmraw, train_type=self.train_type)
             hm_writer.save_hm_and_patches(rec, out_dir, data_conf.get_target_cols())

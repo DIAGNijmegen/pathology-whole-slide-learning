@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import torch
-
+from copy import deepcopy
 import torch.nn.functional as F
 from torch import autocast
 from torch.cuda.amp import GradScaler
@@ -19,6 +19,7 @@ from wsilearn.utils.path_utils import PathUtils
 _default_data_key = 'data'
 _default_target_key = 'target'
 _default_out_key = 'out'
+_default_logit_key = 'logit'
 
 def torch_to_python(obj):
     if torch.is_tensor(obj):
@@ -44,17 +45,29 @@ def inference_trainer(trainer, module, dataloader, ckpt_path='best', data_key=_d
     # acc = accuracy_score(targets, preds)
     # print('sk acc: %.8f (%d samples)' % (acc, len(preds)))
 
-def load_pl_state_dict(path, model, replacements={}):
+def load_pl_state_dict(path, model, replacements_pl={'model.':''}, replacements={}, deletions=[], **kwargs):
     """ Loads the state dict of the pl checkpoint into the model. removes pl-specific weight-name prefixes"""
-    state_dict = torch.load(path)['state_dict']
-    for key in list(state_dict.keys()):
-        if key.startswith('model.'):
-            state_dict[key.replace('model.', '')] = state_dict.pop(key)
-        else:
-            state_dict.pop(key) #ignore extra modules
+    if not torch.cuda.is_available():
+        kwargs['map_location'] = 'cpu'
+    state_dict = torch.load(path, **kwargs)['state_dict']
+    # for key in list(state_dict.keys()):
+    #     if key.startswith('model.'):
+    #         state_dict[key.replace('model.', '')] = state_dict.pop(key)
+    #     else:
+    #         state_dict.pop(key) #ignore extra modules
 
+    if 'criterion.weight' not in deletions:
+        deletions.append('criterion.weight')
+    replacements_pl.update(replacements)
     for key in list(state_dict.keys()):
-        for k,v in replacements.items():
+        deleted = False
+        for k in deletions:
+            if key.startswith(k):
+                state_dict.pop(key)
+                deleted = True
+                break
+        if deleted: continue
+        for k,v in replacements_pl.items():
             if k in key:
                 state_dict[key.replace(k, v)] = state_dict.pop(key)
 
@@ -154,14 +167,15 @@ class InferenceOutWriter(InferenceCallback):
 
 class Inferencer(object):
     def __init__(self, model, callbacks=[], device=None, data_key=_default_data_key, out_key=_default_out_key,
-                 overwrite=False, post_fct=None, fp16=False):
-
+                 logit_key=_default_logit_key, overwrite=False, post_fct=None, fp16=False, batch_is_sample=False,
+                 benchmark=True):
+        """ batch_is_sample: if True, the batch is a single sample, not a batch of samples """
         if callbacks is None:
             callbacks = []
         self.callbacks = callbacks
 
         if device is None:
-            device = create_device()
+            device = create_device(benchmark=benchmark)
         self.device = device
 
         model.eval()
@@ -171,14 +185,19 @@ class Inferencer(object):
 
         self.data_key = data_key
         self.out_key = out_key
+        self.logit_key = logit_key
 
         self.overwrite = overwrite
+
+        self.batch_is_sample = batch_is_sample
 
         post_fcts = [None, 'id', 'sigmoid', 'softmax','surv']
         if post_fct not in post_fcts and not is_callable(post_fct):
             raise ValueError('post_fct %s not in %s' % (post_fct, str(post_fcts)))
         self.post_fct = post_fct
         self.fp16 = fp16
+
+        self._warned = False
 
     def _post_process(self, output):
         if is_dict(output):
@@ -189,7 +208,13 @@ class Inferencer(object):
             if is_callable(self.post_fct):
                 out = self.post_fct(out)
             elif 'softmax'==self.post_fct:
-                out = F.softmax(out, dim=1)
+                if out.shape[1]==1:
+                    out = torch.sigmoid(out)
+                    if not self._warned:
+                        print('CHANGED SOFTMAX TO SIGMOID')
+                        self._warned = True
+                else:
+                    out = F.softmax(out, dim=1)
             elif 'sigmoid'==self.post_fct:
                 out = torch.sigmoid(out)
             elif 'tanh'==self.post_fct:
@@ -219,7 +244,7 @@ class Inferencer(object):
 
         assert self.model.training==False #set to eval in init
 
-        print('applying to %d batches' % len(loader))
+        print('applying to %d batches, out=%s' % (len(loader), str(out_dir)))
         entries = []
         with torch.no_grad():
             for batch, data in enumerate(loader):
@@ -240,6 +265,10 @@ class Inferencer(object):
                     print('rest-data:', data)
                     raise
 
+                if is_dict(out):
+                    logits = out[self.out_key]
+                else:
+                    logits = out
                 out = self._post_process(out)
 
                 for cb in self.callbacks:
@@ -249,9 +278,10 @@ class Inferencer(object):
                     out = out[self.out_key]
 
                 out = to_numpy(out)
+                logits = to_numpy(logits)
                 #add results
 
-                self._add_result_entries(data, out, entries)
+                self._add_result_entries(data, logits, out, entries)
 
         df = pd.DataFrame(entries)
         if out_dir is not None:
@@ -265,18 +295,31 @@ class Inferencer(object):
         # acc = accuracy_score(targets, probs)
         # print('sk acc: %.8f' % acc)
 
-    def _add_result_entries(self, data, out, entries):
+    def _add_result_entries(self, data, logit, out, entries):
         bs = len(out)
         if len(data) == 0:
             data_entries = [{}] * bs
         else:
+            if self.batch_is_sample:
+                n_out = len(out)
+                if n_out !=1: raise ValueError('batch_is_sample=True but len(out)=%d' % n_out)
+                data = deepcopy(data)
+                for k in list(data.keys()):
+                    kvals = list(set(data[k]))
+                    if len(kvals)==1:
+                        data[k] = [kvals[0]]
+                    else:
+                        data.pop(k)
             data_entries = dict_of_lists_to_dicts(data)
         for bind in range(bs):
             entry = {}
             entries.append(entry)
             out_bind = out[bind]
+            logit_bind = logit[bind]
             for j in range(len(out_bind)):
                 entry[self.out_key + str(j)] = out_bind[j]
+            for j in range(len(out_bind)):
+                entry[self.logit_key + str(j)] = logit_bind[j]
 
             n_out = len(out)
             for k, v in data_entries[bind].items():
@@ -290,3 +333,5 @@ class Inferencer(object):
                             entry[k + str(j)] = v[j]
                 else:
                     entry[k] = v
+
+        pass

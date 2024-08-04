@@ -8,7 +8,6 @@ import torch
 from wsilearn.utils.cool_utils import can_open_file
 from wsilearn.dl.torch_utils import print_model_summary
 from wsilearn.utils.gpu_utils import count_gpus
-from wsilearn.utils.ray_utils import init_ray_on_docker, CallRayWrapper
 from wsilearn.compress.encoders import LighntningUnsupervisedEncoderWrapper, \
     MtdpEncoderWrapper, TimmEncoder, IncRes2Encoder, Res50Encoder, DensenetEncoder
 
@@ -22,7 +21,7 @@ def create_encoder(encoder, encoder_path=None, layer_name=None, multiproc=False,
         enc = HistosslEncoderWrapper(model_path=encoder_path)
         print_model_summary(enc._create_model(), torch.zeros((2,3,256,256)))
     elif "mtdp" == encoder or 'mtdp_resnet' in encoder or 'mtdp_res50' in encoder:
-        enc = MtdpEncoderWrapper(arch="resnet50")
+        enc = MtdpEncoderWrapper(arch="resnet50", model_path=encoder_path)
     elif 'mtdp_densenet'in encoder:
         enc = MtdpEncoderWrapper(arch="densenet121")
     elif 'incres2' == encoder:
@@ -38,16 +37,6 @@ def create_encoder(encoder, encoder_path=None, layer_name=None, multiproc=False,
     else:
         raise ValueError('unknown encoder %s' % encoder)
 
-    print(f'multiproc {multiproc}, n_cpus: {n_cpus}, n_gpus: {n_gpus}')
-    if multiproc:
-        if n_gpus is None:
-            n_gpus = count_gpus()
-        # encoder = RayCallWrapper.remote(encoder)
-        print(f'calling init_ray_on_docker with {n_cpus} cpus and {n_gpus} gpus')
-        cpus, gpus = init_ray_on_docker(n_cpus=n_cpus, n_gpus=n_gpus)
-        # gpus = torch.cuda.device_count()
-        print('creating CallRayWrapper with %d gpus' % n_gpus)
-        enc = CallRayWrapper(enc, n_gpus=n_gpus)
     return enc
 
 

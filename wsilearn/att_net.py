@@ -293,7 +293,7 @@ class AttNet(nn.Module):
         if self.inst_cluster:
             for i in range(len(self.inst_classifiers)):
                 classifier = self.inst_classifiers[i]
-                Ai = A[i] if self.mb else A
+                Ai = A[:,i] if self.mb else A
                 neg_inst_logits, pos_inst_logits = self._inst_out(Ai, x, classifier)
                 result[f'neg_inst_logits_{i}'] = neg_inst_logits
                 result[f'pos_inst_logits_{i}'] = pos_inst_logits

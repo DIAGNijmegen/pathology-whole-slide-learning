@@ -169,7 +169,7 @@ class NicLearner(object):
                  no_heatmaps=False, no_out=False, hmsoft=False, seed=1, num_workers=6, pin_memory=True,
                  log_every_n_steps=20, inst_cluster=False, subtyping=False, group_weights=None,
                  opt_conf={'name':'adamw', 'lr':1e-4, 'weight_decay':1e-4}, lrs_conf={},
-                 loss_conf={},  # weight=None,
+                 loss_conf={}, accelerator='gpu', # weight=None,
                  id_clf=False, balance=False, profiler=None, tpr_weight=None, **kwargs):
         """
         tpr_weight: relative weight of sensitivity to specificity when determining the clf-roc-threshold during evaluation
@@ -235,6 +235,7 @@ class NicLearner(object):
         self.anno_dir = anno_dir
         self.n_hm_max = n_hm_max
 
+        self.accelerator = accelerator
         self.batch_size = batch_size
         self.epochs = epochs
         self.precision = precision
@@ -506,7 +507,7 @@ class NicLearner(object):
         callbacks.append(MeterlessProgressBar(refresh_rate=10))
         trainer = pl.Trainer(max_epochs=self.epochs,
                              # progress_bar_refresh_rate=10,
-                             accelerator='gpu', devices=1, benchmark=self.batch_size>1,
+                             accelerator=self.accelerator, devices=1, benchmark=self.batch_size>1,
                              logger=[csv_logger, mylogger
                                      # wandb_logger, tb_logger,
                                      ],

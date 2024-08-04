@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 import torchmetrics
 # from pytorch_lightning.metrics.functional import accuracy
 
-from wsilearn.utils.cool_utils import is_dict, is_string, is_iterable
+from wsilearn.utils.cool_utils import is_dict, is_string, is_iterable, is_list
 from wsilearn.dl.loss_utils import create_loss_fct
 from wsilearn.dl.models.model_utils import create_optimizer, create_lr_scheduler
 from wsilearn.dl.torch_utils import to_cpu, to_numpy
@@ -24,7 +24,7 @@ class ModuleBase(pl.LightningModule):
                  data_key='data', target_key='target', out_key='out',
                  n_features=None, n_train=None,
                  epoch_metrics=[], average_metrics={},
-                 additional_out_keys=[], additional_losses=[]
+                 additional_out_keys=[], additional_losses=[], phases=['train','val','test'],
                  ):
         """
         average_metrics: e.g. {'auc_avg':['auc1','auc2']} - logs metric averages, e.g.
@@ -39,9 +39,8 @@ class ModuleBase(pl.LightningModule):
         self._epoch_metrics = epoch_metrics
         self._average_metrics = average_metrics
 
-        self._phases = ['train','val','test']
+        self._phases = phases
         self.metrics = {}
-
         for phase in self._phases:
             self._add_metrics(phase)
 
@@ -295,10 +294,20 @@ class ClfModule(ModuleBase):
     def _add_metrics(self, phase):
         metrics = self.metrics
         n_classes = self.n_classes
-        metrics[phase] = {'acc':torchmetrics.Accuracy(num_classes=n_classes),
-                          'f1':torchmetrics.F1(num_classes=n_classes, average="micro")}
+        # if torchmetrics.__version__ < '1.0.0':
+        #     print('torchmetrics version < 1.0.0:', torchmetrics.__version__)
+        #     metrics_kwargs = {}
+        # else:
+        #     print('torchmetrics version > 1.0.0:', torchmetrics.__version__)
+        if self.multilabel:
+            metrics_kwargs = dict(num_labels=n_classes, task='multilabel')
+        else:
+            metrics_kwargs = dict(num_classes=n_classes, task='multiclass')
+        metrics[phase] = {'acc':torchmetrics.Accuracy(**metrics_kwargs),
+                          'f1':torchmetrics.F1Score(average="micro", **metrics_kwargs)
+                          }
         # if self.n_classes==2:
-        metrics[phase]['auc'] = torchmetrics.AUROC(num_classes=n_classes, average="macro")
+        metrics[phase]['auc'] = torchmetrics.AUROC(average="macro", **metrics_kwargs)
 
     def _get_targets(self, batch):
         target = batch[self._target_key]

@@ -17,8 +17,6 @@ from argparse import ArgumentParser
 import torch
 import torch.nn.parallel
 import pandas as pd
-import ray
-from ray.util import ActorPool
 
 from wsilearn.utils.cool_utils import *
 # print_env_info()
@@ -28,7 +26,6 @@ from wsilearn.wsi.wsd_image import ImageReader, PixelSpacingLevelError
 from wsilearn.utils.path_utils import *
 from wsilearn.dl.torch_utils import determine_max_input_volume
 from wsilearn.utils.gpu_utils import gpu_mem
-from wsilearn.utils.ray_utils import init_ray_on_docker
 from wsilearn.utils.signal_utils import ExitHandler
 from wsilearn.wsi.wsi_utils import read_patch_from_arr
 from wsilearn.wsi.wsi_read import OpenSlideReader
@@ -557,31 +554,6 @@ class SlidesCompressor(object):
         return ok
 
 
-@ray.remote(num_cpus=1)
-class RaySlideCompressor(SlideCompressor):
-    pass
-    # def __init__(self, featurizer:Featurizer):
-    #     self.featurizer = featurizer
-    #
-    # def featurize_slide(self, slide_path, mask_path):
-    #     return self.featurizer.encoder(slide_path, mask_path)
-
-class RaySlidesCompressor(SlidesCompressor):
-    def __init__(self, encoder, n_cpus=None, n_gpus=None, **featurizer_kwargs):
-        self.n_cpus, self.n_gpus = init_ray_on_docker(n_cpus=n_cpus, n_gpus=n_gpus)
-        # encoder_creator = RayCallWrapper.remote(encoder_creator)
-        super().__init__(encoder, **featurizer_kwargs)
-
-    def _compress_slides_masks(self, slides_masks):
-        n_compressors = max(1, self.n_cpus - self.n_gpus)
-        featurizers = [RaySlideCompressor.remote(**self.featurizer_kwargs) for i in range(n_compressors)]
-        pool = ActorPool(featurizers)
-        print('created ActorPool with %d featurizers' % len(featurizers))
-        random.shuffle(slides_masks)
-        results = pool.map_unordered(lambda featurizer, params:
-                    featurizer.featurize_slide.remote(self.encoder, *params), slides_masks)
-        self.df = pd.DataFrame(results)
-
 def compress(data, out_dir, encoder, encoder_path=None, mask_dir=None, config=None, out_format='h5',
              spacing=0.5, patch_size=256, stride=256, batch_size=64, overwrite=False, cache_dir=None,
              augm=None, mask_label=None, mask_spacing=2.0,
@@ -635,7 +607,7 @@ def compress(data, out_dir, encoder, encoder_path=None, mask_dir=None, config=No
 
     encoder_name = str(encoder)
     print('creating encoder %s with kwargs %s' % (str(encoder), str(enc_kwargs)))
-    encoder = create_encoder(encoder=encoder, layer_name=layer_name, multiproc=multiproc,
+    encoder = create_encoder(encoder=encoder, layer_name=layer_name,
                              encoder_path=encoder_path, n_cpus=n_cpus, n_gpus=n_gpus, **enc_kwargs)
 
     compress_kwargs = dict(batch_size=batch_size, out_dir=out_dir, shift=stride, fp32=fp32,
@@ -643,16 +615,13 @@ def compress(data, out_dir, encoder, encoder_path=None, mask_dir=None, config=No
                            out_format=out_format, spacing=spacing, cache_dir=cache_dir, mask_label=mask_label,
                            only_matching_masks=only_matching_masks, allow_no_masks=allow_no_masks, mask_spacing=mask_spacing,
                            suppress_input_name=suppress_input_name, thumbs=thumbs, augm=augm, spacing_tolerance=spacing_tolerance)
-    # all_args = dict(encoder=encoder_name, layer_name=layer_name, multiproc=multiproc,
+    # all_args = dict(encoder=encoder_name, layer_name=layer_name,
     #                 encoder_path=encoder_path, n_cpus=n_cpus, n_gpus=n_gpus, **enc_kwargs)
     # all_args['compress'] = compress_kwargs
     # out_args_path = Path(out_dir)/'compress_args.json'
     # write_json_dict(out_args_path, all_args)
 
-    if multiproc:
-        seqf = RaySlidesCompressor(encoder, n_cpus=n_cpus, **compress_kwargs, thumbs_idx=thumbs_idx)
-    else:
-        seqf = SlidesCompressor(encoder, **compress_kwargs, thumbs_idx=thumbs_idx)
+    seqf = SlidesCompressor(encoder, **compress_kwargs, thumbs_idx=thumbs_idx)
 
     for i in range(2):
         if Path(data).suffix in ['.tif', '.mrxs', '.svs', '.ndpi']:

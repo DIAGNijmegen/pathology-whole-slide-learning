@@ -113,6 +113,7 @@ class SlideReader(object):
 
     @property
     def shapes(self) -> List[Tuple[int, int]]:
+        """ [(width,height), ...] """
         return self._shapes
 
     @property
@@ -134,6 +135,11 @@ class SlideReader(object):
         raise InvalidSpacingError(
             self._image_path, spacing, self.spacings, spacing_margin
         )
+
+    def shape(self, spacing):
+        level = self.level(spacing)
+        shape = self.shapes[level]
+        return shape
 
     def get_downsampling_from_spacing(self, spacing: float) -> float:
         return self.get_downsampling_from_level(self.level(spacing))
@@ -302,7 +308,8 @@ class OpenSlideReader(SlideReader):
 class AsapReader(MultiResolutionImage, SlideReader):
     def __init__(self, image_path: str, **kwargs) -> None:
         SlideReader.__init__(self, image_path, **kwargs)
-        self.__dict__.update(MultiResolutionImageReader().open(image_path).__dict__)
+        self._reader = MultiResolutionImageReader().open(image_path)
+        # self.__dict__.update(MultiResolutionImageReader().open(image_path).__dict__)
         self._init_slide()
         self.setCacheSize(0)
 
@@ -325,13 +332,13 @@ class AsapReader(MultiResolutionImage, SlideReader):
             x, y = x - downsampling * (width // 2), y - downsampling * (height // 2)
 
         return np.array(
-            super().getUCharPatch(int(x), int(y), int(width), int(height), int(level))
+            self._reader.getUCharPatch(int(x), int(y), int(width), int(height), int(level))
         )
 
     def _init_shapes(self) -> List[Tuple]:
         try:
             return [
-                tuple(self.getLevelDimensions(level))
+                tuple(self._reader.getLevelDimensions(level))
                 for level in range(self.getNumberOfLevels())
             ]
         except:
@@ -339,20 +346,21 @@ class AsapReader(MultiResolutionImage, SlideReader):
 
     def _init_downsamplings(self) -> List[float]:
         return [
-            self.getLevelDownsample(level) for level in range(self.getNumberOfLevels())
+            self._reader.getLevelDownsample(level) for level in range(self.getNumberOfLevels())
         ]
 
     def _init_spacings(self) -> List[float]:
         try:
             return [
-                self.getSpacing()[0] * downsampling
+                self._reader.getSpacing()[0] * downsampling
                 for downsampling in self.downsamplings
             ]
         except:
             raise InvalidSpacingError(self._image_path, 0, [], 0)
 
     def close(self, clear=True):
-        super(MultiResolutionImage, self).close()
+        # super(MultiResolutionImage, self).close()
+        self._reader.close()
         super(SlideReader, self).close(clear=clear)
 
 def _slide_info(path):

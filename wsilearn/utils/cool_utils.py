@@ -1,4 +1,4 @@
-import importlib
+import importlib, functools
 
 import builtins
 
@@ -9,6 +9,7 @@ import sys, os
 
 import time, json, shutil, string, subprocess
 import timeit
+import traceback
 
 import numpy
 from tqdm import tqdm
@@ -244,7 +245,7 @@ def take_closest_larger_number(l, number):
     filtered = [num for num in l if num >= number]
     if not filtered:
         return None
-    return take_closest_larger_number(filtered, number)
+    return filtered[0]
 
 def take_closest_number_index(l, number):
     closest = take_closest_number(l, number)

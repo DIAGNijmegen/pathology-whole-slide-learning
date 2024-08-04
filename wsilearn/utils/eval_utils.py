@@ -22,8 +22,10 @@ from wsilearn.utils.df_utils import print_df, print_df_trac
 from wsilearn.utils.parse_utils import parse_string
 
 import warnings
-warnings.filterwarnings("ignore",category=matplotlib.cbook.mplDeprecation)
-
+try:
+    warnings.filterwarnings("ignore",category=matplotlib.cbook.mplDeprecation)
+except:
+    pass
 ########## NEEDS CLEANUP AND REFACTORING1##################
 
 class DataConfEvaluatorCallback(object):

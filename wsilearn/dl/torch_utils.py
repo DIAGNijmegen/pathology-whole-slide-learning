@@ -322,7 +322,7 @@ def mysummary(model, x, print_text=False, forward_fct=None, *args, **kwargs):
         ksize="Kernel Shape",
         out="Output Shape",
     ))
-    df_sum = df.sum()
+    df_sum = df.sum(numeric_only=True)
     n_convs = df.index.str.contains('Conv2d').sum()
     df.index.name = "Layer"
 
@@ -350,9 +350,9 @@ def mysummary(model, x, print_text=False, forward_fct=None, *args, **kwargs):
             print("="*max_repr_width)
             print(df.replace(np.nan, "-"))
             print("-"*max_repr_width)
-            df_total = pd.DataFrame([{"Name": "Total params", "Totals": df_sum["Params"] + df_sum["params_nt"]},
+            df_total = pd.DataFrame([{"Name": "Total params", "Totals": df_sum["Params"] + df_sum["Non-trainable params"]},
                                      {"Name":"Trainable params","Totals": df_sum["Params"]},
-                                     {"Name":"Non-trainable params","Totals": df_sum["params_nt"]},
+                                     {"Name":"Non-trainable params","Totals": df_sum["Non-trainable params"]},
                                      {"Name":"Conv Layers", "Totals": n_convs}
                                      #"Mult-Adds": df_sum["Mult-Adds"]
                                     ])

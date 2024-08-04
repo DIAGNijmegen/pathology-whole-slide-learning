@@ -53,11 +53,13 @@ class MeanStdEncoder(PatchStatEncoder):
 
 
 class EncoderWrapper(object):
-    def __init__(self, normalizer, model_path=None, hist_bins=None, stat_enc=None, pred_center_crop=None, hwc=True,
+    def __init__(self, normalizer, model=None, hist_bins=None, stat_enc=None, pred_center_crop=None, hwc=True,
                  verbose=True, model_name=None, **stat_enc_kwargs):
         self.normalizer = create_input_normalizer(normalizer)
         self.model_name = model_name
-        self.model_path = model_path
+        if is_string_or_path(model) and '~' in str(model):
+            model = os.path.expanduser(str(model))
+        self.model = model
         self.calls = 0
         self.channels_first = None
         self.verbose = verbose
@@ -124,6 +126,8 @@ class EncoderWrapper(object):
         return self._print_model_summary(input_shape)
 
     def _init_network(self):
+        if not is_string_or_path(self.model):
+            return self.model
         raise ValueError('implemement _init_network')
 
     def get_network(self):
@@ -132,9 +136,9 @@ class EncoderWrapper(object):
         return self.network
 
 class PytorchEncoderWrapper(EncoderWrapper):
-    def __init__(self, model_path=None, model_pred_fct=False, eval=True,
-                 layer_name=None, avgpool=False, **kwargs):
-        super().__init__(model_path=model_path, hwc=False, **kwargs)
+    def __init__(self, model=None, model_pred_fct=False, eval=True,
+                 layer=None, layer_name=None, hwc=False, avgpool=False, **kwargs):
+        super().__init__(model=model, hwc=False, **kwargs)
         self.numpyToTensor = NumpyToTensor()
         self.model_pred_fct = model_pred_fct
         self.eval = eval
@@ -142,26 +146,40 @@ class PytorchEncoderWrapper(EncoderWrapper):
         if model_pred_fct not in allowed_fcts:
             print('not allowed model_pred_fct %s' % str(model_pred_fct))
             raise ValueError('model_pred must be in %s' % str(allowed_fcts))
+        self._hwc = hwc #self.hwc seems taken, leads to an error in formward if set
         self.avgpool = avgpool
-        self.layer_name = layer_name
+        self.layer = layer
+        if layer is None and layer_name is not None:
+            self.layer = layer_name
+        self.device = None
 
     def _init_network(self):
-        print('initializing network..')
-        model = self._create_model()
-
-        #if done here, problem with torch summary when multiple gpus present, apparently
-        # print_network(model)
-        if torch.cuda.device_count() > 1:
-            print('Using nn.DataParallel for %d gpus' % torch.cuda.device_count())
-            model = nn.DataParallel(model)
 
         self.device = create_device()
-        model = model.to(self.device)
-        print('created model %s on device %s' % (str(model), str(self.device)))
 
-        if self.layer_name is not None:
-            print('creating hook for %s' % self.layer_name)
-            self.hook = ModelHook(model, self.layer_name)
+        if self.model is None or is_string_or_path(self.model):
+            print('initializing network..')
+            model = self._create_model()
+            #if done here, problem with torch summary when multiple gpus present, apparently
+            # print_network(model)
+            if torch.cuda.device_count() > 1:
+                print('Using nn.DataParallel for %d gpus' % torch.cuda.device_count())
+                model = nn.DataParallel(model)
+
+            model = model.to(self.device)
+            print('created model %s on device %s' % (model.__class__.__name__, str(self.device)))
+        else:
+            model = self.model
+            #check if pytorch model has no device or has a different device from self.device
+            if not hasattr(self.model, 'device') or self.model.device != self.device:
+                model = model.to(self.device)
+                # print('put model %s on device %s' % (model.__class__.__name__, str(self.device)))
+            else:
+                print('using model %s on device %s' % (model.__class__.__name__, str(self.device)))
+
+        if self.layer is not None:
+            print('creating hook for layer %s' % str(self.layer))
+            self.hook = ModelHook(model, self.layer)
 
         if self.eval:
             model.eval()
@@ -172,25 +190,30 @@ class PytorchEncoderWrapper(EncoderWrapper):
             print('several gpus, not printing model summary! FIXME!')
             return
 
-        df, text = model_summary(self.network, input_shape, device=self.device, forward_fct=self._forward)
+        df, text = model_summary(self.network, input_shape, device=self.get_device(), forward_fct=self._forward)
         print(text)
 
     def _forward(self, inp):
         out = self._forward_network(inp)
-        if self.layer_name is None:
-            return out
-        return self.hook.out
+        if self.layer is not None:
+            out = self.hook.out
+        return out
 
     def _forward_network(self, inp):
         out = self.network(inp)
         return out
 
+    def get_device(self):
+        if self.device is None:
+            self.device = create_device()
+        return self.device
+
     def _encode(self, data):
         data = self.numpyToTensor(data)
-        data = data.to(self.device)
+        data = data.to(self.get_device())
         if self.calls==1:
             print('first encode call with data %s of type %s using device %s' %\
-                  (str(data.shape), str(data.dtype), str(self.device)))
+                  (str(data.shape), str(data.dtype), str(self.get_device())))
         prev = torch.is_grad_enabled()
         if self.eval and prev:
             torch.set_grad_enabled(False)
@@ -213,7 +236,11 @@ class PytorchEncoderWrapper(EncoderWrapper):
             print('shapes:', [str(r.shape) for r in repr])
             repr = repr[0]
 
-        if self.avgpool:
+        if self._hwc:
+            #with pytorch convert from bhwc to bchw
+            repr = repr.permute(0,3,1,2)
+
+        if self.avgpool and len(repr.shape)>2:
             repr = F.avg_pool2d(repr, kernel_size=repr.size()[-2:])
 
         repr = repr.squeeze(-1).squeeze(-1)
@@ -221,8 +248,8 @@ class PytorchEncoderWrapper(EncoderWrapper):
         if self.eval and prev:
             torch.set_grad_enabled(True)
 
-        if self.calls==1 or self.calls % 100==0:
-            print('GPU max allocated:', max_gpu_mem_allocated(self.device, mb=True))
+        if self.calls==1 or self.calls % 1000==0:
+            print('GPU max allocated:', max_gpu_mem_allocated(self.get_device(), mb=True))
             sys.stdout.flush()
             sys.stderr.flush()
         return repr
@@ -230,14 +257,25 @@ class PytorchEncoderWrapper(EncoderWrapper):
     def _create_model(self):
         raise ValueError('implement _create_model!')
 
+import timm
+def create_timm_model(name, pretrained=False, **kwargs):
+    model = timm.create_model(name, pretrained=pretrained, **kwargs)
+    model.short_name = name
+    return model
 
 class TimmEncoder(PytorchEncoderWrapper):
-    def __init__(self, model_name, normalizer='imagenet', **kwargs):
+    def __init__(self, model_name, normalizer='imagenet', pretrained=True, **kwargs):
+        self.pretrained = pretrained
         super().__init__(model_name=model_name, normalizer=normalizer, **kwargs)
 
     def _create_model(self):
         import timm
-        enc = timm.create_model(self.model_name, pretrained=True)
+        # enc = timm.create_model(self.model_name, pretrained=True)
+        targs = {}
+        if self.model is not None and str(self.model)!='None':
+            targs['pretrained_cfg_overlay'] = dict(file=self.model)
+        enc = create_timm_model(self.model_name, pretrained=self.pretrained, **targs)
+        self.n_features = enc.n_features
         return enc
 
     def _forward_network(self, inp):

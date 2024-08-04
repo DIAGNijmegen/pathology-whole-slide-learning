@@ -73,7 +73,7 @@ def _create_pred_thumbnail(mask, spacing, out_dir, name, wsi_path=None, alpha=0.
     remap_arr(mask, remap)
 
     if heatmap:
-        segm = np.uint8(255 * mask) if mask.dtype in [np.float, float] else mask
+        segm = np.uint8(255 * mask) if mask.dtype==float else mask
         segm_bgr = cv.cvtColor(segm, cv.COLOR_RGB2BGR)
         if heatmap_cmap.lower()=='reds':
             import cmapy
