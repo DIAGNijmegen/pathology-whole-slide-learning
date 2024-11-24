@@ -25,7 +25,6 @@ from wsilearn.wsi.wsd_image import ImageReader, PixelSpacingLevelError
 
 from wsilearn.utils.path_utils import *
 from wsilearn.dl.torch_utils import determine_max_input_volume
-from wsilearn.utils.gpu_utils import gpu_mem
 from wsilearn.utils.signal_utils import ExitHandler
 from wsilearn.wsi.wsi_utils import read_patch_from_arr
 from wsilearn.wsi.wsi_read import OpenSlideReader
@@ -568,27 +567,6 @@ def compress(data, out_dir, encoder, encoder_path=None, mask_dir=None, config=No
         torch.backends.cudnn.enabled = False
         print('disable cudnn')
 
-    if batch_size=='auto':
-        start_size = [1024, 3, patch_size, patch_size]
-        model = create_encoder(encoder=encoder, layer_name=layer_name,
-                               encoder_path=encoder_path, **enc_kwargs)._create_model()
-        if n_gpus is None:
-            n_gpus = torch.cuda.device_count()
-        if n_gpus > 1:
-            print('ddp model with %d devices' % n_gpus)
-            model = torch.nn.parallel.DataParallel(model)
-        else:
-            print('determining max input volume with %d gpus' % n_gpus)
-        working_size, _ = determine_max_input_volume(model, start_size, train=False, even_batch_size=True,
-                                                     reserve=reserve)
-        del model
-        model = None
-        torch.cuda.empty_cache()
-        batch_size = working_size[0]
-        print('auto-setting batch_size to %d' % working_size[0])
-        gpu_mem(print_info=True)
-        print("CUDA memory allocated:", torch.cuda.memory_allocated())
-
     if not disable_cudnn:
         torch.backends.cudnn.benchmark = True
 
@@ -608,7 +586,7 @@ def compress(data, out_dir, encoder, encoder_path=None, mask_dir=None, config=No
     encoder_name = str(encoder)
     print('creating encoder %s with kwargs %s' % (str(encoder), str(enc_kwargs)))
     encoder = create_encoder(encoder=encoder, layer_name=layer_name,
-                             encoder_path=encoder_path, n_cpus=n_cpus, n_gpus=n_gpus, **enc_kwargs)
+                             encoder_path=encoder_path, **enc_kwargs)
 
     compress_kwargs = dict(batch_size=batch_size, out_dir=out_dir, shift=stride, fp32=fp32,
                            input_size=patch_size, overwrite=overwrite, take_shortest_name=take_shortest_name,

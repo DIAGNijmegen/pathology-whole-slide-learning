@@ -6,7 +6,6 @@ from wsilearn.utils.cool_utils import *
 from wsilearn.utils.df_utils import print_df, df_merge_check
 from wsilearn.utils.files_utils import FilesInfo
 from wsilearn.utils.path_utils import PathUtils
-from wsilearn.utils.simpleitk_utils import save_mha
 import pandas as pd
 
 from wsilearn.utils.cool_utils import print_mp, print_mp_err
@@ -236,6 +235,7 @@ class CompressedMha(CompressedSlide):
         raise ValueError('check whether mha-format is hwc or not')
 
     def write(self, result, **kwargs):
+        from wsilearn.utils.simpleitk_utils import save_mha
         return save_mha(result, self.path)
 
 def compressed_slide_from_ending(path_ending, **kwargs) -> CompressedSlide:

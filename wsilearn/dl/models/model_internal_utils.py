@@ -41,6 +41,8 @@ class ModelHook(object):
 
     def _forward_hook(self, module, inp, out):
         self.inp = inp
+        if len(out.shape)==3: #vit, #fixme: this is a hack
+            out = out[:, 0] #prediction token
         self.out = out
 
 

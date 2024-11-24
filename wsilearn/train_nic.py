@@ -1,3 +1,5 @@
+import platform
+
 import os, getpass, sys
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers, seed_everything
@@ -730,6 +732,9 @@ def _train_nic(args):
     eval_last = args.pop('eval_last',False)
     if 'out_dir' not in args:
         args['out_dir'] = args.pop('output_dir')
+    #if on darwin use accelerator cpu:
+    if platform.system() == 'Darwin':
+        args['accelerator'] = 'cpu'
     trainer = NicLearner(**args)
     print('out dir: %s' % str(trainer.out_dir))
     write_json_dict(path=trainer.out_dir/'args.json', data=args)

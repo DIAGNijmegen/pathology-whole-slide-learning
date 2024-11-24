@@ -28,7 +28,15 @@ wsilearn.train_nic_pl.py
 
 More documentation to follow soon
 
+### Installation
 
+Requires python 3.10 and pip<=24.0
+
+pip install -r requirements.txt
+The training code has a dependency to pytorch-lightning 1.7.7.
+
+
+### Encoders
 [1] Mormont, Romain, Pierre Geurts, and Raphaël Marée. "Multi-task pre-training of deep neural networks for digital pathology." IEEE journal of biomedical and health informatics 25.2 (2020): 412-421
 
 [2] Ciga, Ozan, Tony Xu, and Anne Louise Martel. "Self supervised contrastive learning for digital histopathology." Machine Learning with Applications 7 (2022): 100198.

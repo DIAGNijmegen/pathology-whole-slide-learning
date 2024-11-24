@@ -70,7 +70,7 @@ def combine_predictions(eval_dirs, out_dir, overwrite=False, id='name'):
         df = df_concat(*dfs)
 
         cols = [str(c) for c in df.columns if c not in ['path','image']]
-        out_cols = [c for c in cols if c.startswith('out') or c.startswith('pred')]
+        out_cols = [c for c in cols if c.startswith('out') or c.startswith('pred') or c.startswith('logit')]
         agg = {c:(c,unique_one) for c in cols}
         agg.update({c:(c,np.mean) for c in out_cols})
         agg.update({c+'_std':(c,np.std) for c in out_cols})
@@ -95,7 +95,7 @@ def create_combined_heatmaps(npz_dir, out_dir, train_type, wsi_dir=None, overwri
 
 class NicInference(object):
     def __init__(self, model_dir, pack=False, overwrite=False, no_links=False, hmraw=False,
-                 compress_batch_size=32, compress_multiproc=False, compress_args=None, num_workers=0,
+                 compress_batch_size=32, compress_multiproc=False, compress_args=None, args_path=None, num_workers=0,
                  skip_compression=False, flat=None, **kwargs):
         self.model_dir = Path(model_dir)
         self.overwrite = overwrite
@@ -111,7 +111,9 @@ class NicInference(object):
         #     self.clf_thresholds = results.get('validation',{}).get('clf_thresholds',None)
         # else:
         #     print('validation results not found')
-        self.args = read_json_dict(self.model_dir/ 'args.json')
+        if args_path is None:
+            args_path = self.model_dir/ 'args.json'
+        self.args = read_json_dict(args_path)
         self.args.update(kwargs)
         self.flat = self.args.pop('flat',False)
         if flat is not None:
@@ -135,9 +137,7 @@ class NicInference(object):
 
         self.model = create_nic_model(**net_conf)
         model_path = find_pl_model_path(self.model_dir)
-        load_pl_state_dict(model_path, self.model, replacements={'att_net.attention_a':'att_net.att_m',
-                                                                 'att_net.attention_b':'att_net.att_gate',
-                                                                 'att_net.attention_c':'att_net.att_last'})
+        load_pl_state_dict(model_path, self.model)
 
         self.num_workers = num_workers
 

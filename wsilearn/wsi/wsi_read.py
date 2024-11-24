@@ -74,7 +74,7 @@ class UnsupportedVendorError(KeyError):
 
 
 class SlideReader(object):
-    def __init__(self, image_path: str, spacing_tolerance: float = 0.3, cache_path=None, verbose=False) -> None:
+    def __init__(self, image_path: str, spacing_tolerance: float = 0.3, cache_path=None, verbose=False, zoom=False) -> None:
         self._image_path = image_path
         self._extension = os.path.splitext(image_path)[-1]
         self._spacing_margin_ratio = spacing_tolerance
@@ -82,10 +82,18 @@ class SlideReader(object):
         self._verbose = verbose
         self._cache_image()
 
+        self._zoom = zoom
+
     def _init_slide(self):
         self._shapes = self._init_shapes()
         self._downsamplings = self._init_downsamplings()
         self._spacings = self._init_spacings()
+
+        if self._zoom:
+            level = len(self._downsamplings)+1
+            self._downsamplings.insert(level, self._downsamplings[-1]*2)
+            self._shapes.insert(level, (int(self._shapes[-1][0]/2), int(self.shapes[-1][1]/2)))
+            self._spacings.insert(level, self._spacings[-1]*2)
 
     def _get_path(self):
         path = str(self._cache_path) if self._cache_path else str(self._image_path)

@@ -316,11 +316,11 @@ class AttNet(nn.Module):
         if self.mh:
             A = A.sum(dim=1, keepdim=True)
 
-        out = self.compute_out_A(x, A, result)
+        out, m = self.compute_out_A(x, A, result)
 
 
         # A = A.view(orig_shape) #return in orig shape before flattening
-        result.update({'out':out, 'A':A_raw, 'A_soft':A#, 'm':m
+        result.update({'out':out, 'A':A_raw, 'A_soft':A, 'm':m
                        })
         return result
 
@@ -339,7 +339,7 @@ class AttNet(nn.Module):
             m = torch.bmm(A, x)  # e.g. [2, 1, 48] x [2, 48, 512] -> [2, 1, 512]
 
             out = self._compute_out(A, m)
-        return out
+        return out, m
 
     def _compute_out(self, A, m):
         if A.shape[1] > 1:  # mb, A.shape[1]=out_dim
@@ -353,7 +353,7 @@ class AttNet(nn.Module):
             m = m.squeeze(dim=1)  # squeezed to [2, 512]
             out = self.fc(m)
         if m.isnan().any():
-            print('x has nans!')
+            print('m has nans! %s' % str(m.shape))
 
         return out
 
@@ -370,7 +370,7 @@ class AttNet(nn.Module):
             # m = m.squeeze(dim=1)
             patch_logits = self.fc(m)
             if m.isnan().any():
-                print('m has nans!')
+                print('m has nans! %s' % str(m.shape))
 
         out = torch.sum(patch_logits, dim=[-1,-2], keepdim=False)
 

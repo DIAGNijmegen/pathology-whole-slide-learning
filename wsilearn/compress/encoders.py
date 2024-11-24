@@ -1,4 +1,5 @@
 import numpy as np
+from torchvision.models.resnet import Bottleneck
 
 from wsilearn.utils.cool_utils import *
 from wsilearn.dl.np_normalizer import create_input_normalizer
@@ -282,25 +283,6 @@ class TimmEncoder(PytorchEncoderWrapper):
         out = self.network.forward_features(inp)
         return out
 
-class LighntningUnsupervisedEncoderWrapper(PytorchEncoderWrapper):
-    def __init__(self, name, *args, model_path=None,  **kwargs):
-        self.name = name
-        super().__init__(*args, **kwargs, model_path=model_path)
-
-    def _create_model(self):
-        from pl_bolts.models.self_supervised import SimCLR
-
-        if self.name=='plbolts_simclr':
-            weight_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt'
-            simclr = SimCLR.load_from_checkpoint(weight_path, strict=False)
-            simclr.freeze()
-            # model = simclr.encoder
-            model = simclr
-        else:
-            raise ValueError('unknown pl-bolts model %s' % self.name)
-
-        return model
-
 
 class IncRes2Encoder(TimmEncoder):
     def __init__(self, **kwargs):
@@ -321,17 +303,7 @@ class Res50Encoder(PytorchEncoderWrapper):
         return model
 
 
-class MtdpEncoderWrapper(PytorchEncoderWrapper):
-    def __init__(self, model_path=None, model_pred_fct='id', arch="resnet50", pool=True, **kwargs):
-        self.arch = arch
-        self.pool = pool
-        return super().__init__(normalizer='imagenet', model_path=model_path, model_pred_fct=model_pred_fct, **kwargs)
 
-    def _create_model(self):
-        from mtdp import build_model #requires the mtdp code
-        model = build_model(arch=self.arch, pretrained="mtdp", pool=self.pool)
-        model.eval()
-        return model
 
 class DummyEncoder(object):
     def __init__(self, sleep=0):

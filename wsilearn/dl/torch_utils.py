@@ -14,7 +14,6 @@ import math
 from copy import deepcopy
 import torch.backends.cudnn as cudnn
 import numpy as np
-from wsilearn.utils.gpu_utils import gpu_mem
 
 def set_seed_all(seed, cuda=True):
     print('setting seed %d' % seed)
