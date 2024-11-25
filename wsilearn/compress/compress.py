@@ -1,8 +1,4 @@
-from copy import deepcopy
-
-from albumentations import HorizontalFlip, VerticalFlip, Rotate, Compose, ShiftScaleRotate, HueSaturationValue, \
-    RandomBrightnessContrast, GaussianBlur, JpegCompression, ImageCompression
-
+from wsilearn.compress.compression_augm import patch_encoding_map
 from wsilearn.utils.cool_utils import print_mp
 from wsilearn.dataconf import DataConf
 from wsilearn.utils.flexparse import FlexArgumentParser
@@ -11,12 +7,8 @@ print = print_mp
 
 print('entered compress.py')
 
-import traceback
-from argparse import ArgumentParser
-
 import torch
 import torch.nn.parallel
-import pandas as pd
 
 from wsilearn.utils.cool_utils import *
 # print_env_info()
@@ -24,119 +16,11 @@ from wsilearn.utils.cool_utils import *
 from wsilearn.wsi.wsd_image import ImageReader, PixelSpacingLevelError
 
 from wsilearn.utils.path_utils import *
-from wsilearn.dl.torch_utils import determine_max_input_volume
 from wsilearn.utils.signal_utils import ExitHandler
 from wsilearn.wsi.wsi_utils import read_patch_from_arr
 from wsilearn.wsi.wsi_read import OpenSlideReader
 from wsilearn.compress.compressed_data import compressed_slide_from_ending, CompressedInfo
 from wsilearn.compress.encoders_create import create_encoder
-
-
-class AugmentedEncoding(object):
-    def __init__(self, encoder):
-        self.encoder = encoder
-
-    def encode(self, batch):
-        encoded = self.encoder(batch)
-        return encoded
-
-    def __call__(self, batch):
-        return self.encode(batch)
-
-class MeanAugmentedEncoding(AugmentedEncoding):
-    def __init__(self, encoder, transforms):
-        super().__init__(encoder)
-        self.transforms = transforms
-
-    def encode(self, batch):
-        encoded = [self.encoder(batch)]
-        for transf in self.transforms:
-            batch_aug = []
-            for patch in batch:
-                augm = transf(image=patch)['image']
-                batch_aug.append(augm)
-            batch_aug = np.stack(batch_aug)
-            batch_aug_enc = self.encoder(batch_aug)
-            encoded.append(batch_aug_enc)
-        encoded = np.stack(encoded)
-        encoded_mean = encoded.mean(0)
-        return encoded_mean
-
-
-class RotationMeanEncoding(MeanAugmentedEncoding):
-    def __init__(self, encoder):
-        transforms = [HorizontalFlip(p=1), VerticalFlip(p=1),
-                      Rotate((90,90),p=1), Rotate((180,180),p=1), Rotate((270,270),p=1),
-                      Compose([Rotate((90,90),p=1),VerticalFlip(p=1)]),
-                      Compose([Rotate((270,270),p=1),VerticalFlip(p=1)])
-                    ]
-        super().__init__(encoder, transforms)
-
-class RandomAugmentationEncoding(AugmentedEncoding):
-    def __init__(self, encoder, transform):
-        super().__init__(encoder)
-        self.transform = transform
-
-    def encode(self, batch):
-        augmented = []
-        for patch in batch:
-            augm = self.transform(image=patch)['image']
-            augmented.append(augm)
-        augmented = np.stack(augmented)
-        encoded = self.encoder(augmented)
-        return encoded
-
-class RandomAugmentationEncoding1(RandomAugmentationEncoding):
-    def __init__(self, encoder):
-        transforms = [HorizontalFlip(p=0.1),VerticalFlip(p=0.1),
-                      Rotate((90,90),p=0.1), Rotate((180,180),p=0.1), Rotate((270,270),p=0.1),
-                      ShiftScaleRotate(shift_limit=0.03125, scale_limit=0.05, rotate_limit=0, p=0.25),
-                      HueSaturationValue(15, 20, 20, p=0.25),
-                      RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.25),
-                      # GaussianBlur(blur_limit=(3,5), p=0.1),
-                      ImageCompression(75, 85, p=0.25),
-                      ]
-        transforms = Compose(transforms)
-        super().__init__(encoder, transforms)
-
-class ColorMeanEncoding(MeanAugmentedEncoding):
-    def __init__(self, encoder):
-        augmentations = [
-            ShiftScaleRotate(shift_limit=0.03125, scale_limit=0.05, rotate_limit=0, p=0.5),
-            HueSaturationValue(15, 20, 20, p=0.5),
-            RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.5),
-            GaussianBlur(blur_limit=(3,5), p=0.2),
-            ImageCompression(70, 85, p=0.5),
-        ]
-
-        transforms = []
-        for i in range(8):
-            transform = Compose(deepcopy(augmentations))
-            transforms.append(transform)
-
-        super().__init__(encoder, transforms)
-
-class RotationColorMeanEncoding(MeanAugmentedEncoding):
-    def __init__(self, encoder, n=4):
-        augmentations = [
-            HorizontalFlip(p=0.1),VerticalFlip(p=0.1),
-            Rotate((90,90),p=0.1), Rotate((180,180),p=0.1), Rotate((270,270),p=0.1),
-            ShiftScaleRotate(shift_limit=0.03125, scale_limit=0.05, rotate_limit=0, p=0.5),
-            HueSaturationValue(15, 20, 20, p=0.5),
-            RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.5),
-            GaussianBlur(blur_limit=(3,5), p=0.2),
-            ImageCompression(70, 85, p=0.5),
-        ]
-
-        transforms = []
-        for i in range(n):
-            transform = Compose(deepcopy(augmentations))
-            transforms.append(transform)
-
-        super().__init__(encoder, transforms)
-
-patch_encoding_map = {'none':AugmentedEncoding, 'rot8m':RotationMeanEncoding, 'color8m':ColorMeanEncoding,
-                      'raug1':RandomAugmentationEncoding1, 'rc4m':RotationColorMeanEncoding}
 
 class SlideCompressor(object):
     #former Featurizer
@@ -556,9 +440,9 @@ class SlidesCompressor(object):
 def compress(data, out_dir, encoder, encoder_path=None, mask_dir=None, config=None, out_format='h5',
              spacing=0.5, patch_size=256, stride=256, batch_size=64, overwrite=False, cache_dir=None,
              augm=None, mask_label=None, mask_spacing=2.0,
-             layer_name=None, multiproc=False, fp32=False, purpose=None,
-             pred_center_crop=None, take_shortest_name=True, only_matching_masks=False,
-             n_cpus=None, n_gpus=None, reserve=0.15, thumbs=True, thumbs_idx=range(64),
+             layer_name=None, fp32=False, purpose=None,
+             take_shortest_name=True, only_matching_masks=False,
+             thumbs=True, thumbs_idx=range(64),
              allow_no_masks=False, suppress_input_name=False, clear_locks=False, spacing_tolerance=0.3,
              disable_cudnn=False, **enc_kwargs):
     print('starting compress with encoder %s, spacing=%.2f' % (encoder, spacing))
@@ -593,11 +477,6 @@ def compress(data, out_dir, encoder, encoder_path=None, mask_dir=None, config=No
                            out_format=out_format, spacing=spacing, cache_dir=cache_dir, mask_label=mask_label,
                            only_matching_masks=only_matching_masks, allow_no_masks=allow_no_masks, mask_spacing=mask_spacing,
                            suppress_input_name=suppress_input_name, thumbs=thumbs, augm=augm, spacing_tolerance=spacing_tolerance)
-    # all_args = dict(encoder=encoder_name, layer_name=layer_name,
-    #                 encoder_path=encoder_path, n_cpus=n_cpus, n_gpus=n_gpus, **enc_kwargs)
-    # all_args['compress'] = compress_kwargs
-    # out_args_path = Path(out_dir)/'compress_args.json'
-    # write_json_dict(out_args_path, all_args)
 
     seqf = SlidesCompressor(encoder, **compress_kwargs, thumbs_idx=thumbs_idx)
 

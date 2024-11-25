@@ -14,48 +14,8 @@ from wsilearn.utils.cool_utils import print_mp
 
 print = print_mp
 
-
-class PatchStatEncoder(object):
-    """ encodes each dimension of the patch into a histogram or other statistical encoding (mean, std, etc.)"""
-
-    def __call__(self, arrs):
-        # hwc
-        single_input = False
-        if len(arrs.shape)==3: #single input -> batch
-            arrs = arrs[None,:,:,:]
-            single_input = True
-        elif len(arrs.shape)<3:
-            raise ValueError('expects arrays to have shape 3 or 4, not %s' % str(arrs.shape))
-
-        encoded = []
-        for arr in arrs:
-            enc = []
-            dims = arr.shape[-1]
-            non_zero_ind = np.abs(arr).sum(-1) != 0
-            for i in range(arr.shape[-1]):
-                enc_i = self._encode(arr[:,:,i][non_zero_ind])
-                enc.append(enc_i)
-            enc = np.concatenate(enc)
-            encoded.append(enc)
-
-        if single_input:
-            return encoded[0]
-        else:
-            return np.vstack(encoded)
-
-
-class MeanStdEncoder(PatchStatEncoder):
-    def __init__(self, n_bins=10, range=(0,1)):
-        self.n_bins = n_bins
-        self.range = range
-
-    def _encode(self, arr):
-        return np.array([arr.mean(), arr.std()])
-
-
 class EncoderWrapper(object):
-    def __init__(self, normalizer, model=None, hist_bins=None, stat_enc=None, pred_center_crop=None, hwc=True,
-                 verbose=True, model_name=None, **stat_enc_kwargs):
+    def __init__(self, normalizer, model=None, hwc=False, verbose=True, model_name=None):
         self.normalizer = create_input_normalizer(normalizer)
         self.model_name = model_name
         if is_string_or_path(model) and '~' in str(model):
@@ -65,23 +25,9 @@ class EncoderWrapper(object):
         self.channels_first = None
         self.verbose = verbose
 
-        self.hist_bins = hist_bins
         self.network = None
-        self.pred_center_crop = pred_center_crop
 
-        self.stat_enc = None
-        self.hwc = hwc
-        if stat_enc is None:
-            self.stat_enc = None
-        elif stat_enc == 'mean_std':
-            print('stat_enc is MeanStdEncoder')
-            self.stat_enc = MeanStdEncoder(**stat_enc_kwargs)
-        elif stat_enc == 'hist':
-            print('stat_enc is HistogramEncoder')
-            self.stat_enc = HistogramEncoder(**stat_enc_kwargs)
-        else:
-            print('stat_enc_kwargs',stat_enc_kwargs)
-            raise ValueError('unknown value for stat_enc: %s' % str(stat_enc))
+        self._hwc = hwc
 
     def _encode(self, data):
         raise ValueError('implement _encoder')
@@ -93,7 +39,7 @@ class EncoderWrapper(object):
         if self.network is None:
             self.network = self._init_network()
         """ prints the model summary on first call """
-        if not self.hwc:
+        if not self._hwc:
             data = hwc_to_chw(data)
 
         if self.calls == 0:
@@ -106,20 +52,7 @@ class EncoderWrapper(object):
         self.calls += 1
 
         pred = self._encode(data)
-        if self.pred_center_crop is not None:
-            if len(pred.shape)==3:
-                pred = center_crop_img(pred, self.pred_center_crop)
-            elif len(pred.shape)==4:
-                cropped = [center_crop_img(p, self.pred_center_crop) for p in pred]
-                pred = np.array(cropped)
-            else: raise ValueError('unknown pred shape for center cropping: %s' % str(pred.shape) )
-
-        if self.stat_enc is not None:
-            pred = self.stat_enc(pred)
         return pred
-        # invert_op = getattr(encoder, "print_model_summary", None)
-        # if callable(invert_op):
-        #     encoder.print_model_summary([input_size, input_size, 3])
 
     def print_model_summary(self, input_shape=None):
         if self.network is None:
@@ -138,8 +71,8 @@ class EncoderWrapper(object):
 
 class PytorchEncoderWrapper(EncoderWrapper):
     def __init__(self, model=None, model_pred_fct=False, eval=True,
-                 layer=None, layer_name=None, hwc=False, avgpool=False, **kwargs):
-        super().__init__(model=model, hwc=False, **kwargs)
+                 layer_name=None, avgpool=False, **kwargs):
+        super().__init__(model=model, **kwargs)
         self.numpyToTensor = NumpyToTensor()
         self.model_pred_fct = model_pred_fct
         self.eval = eval
@@ -147,11 +80,8 @@ class PytorchEncoderWrapper(EncoderWrapper):
         if model_pred_fct not in allowed_fcts:
             print('not allowed model_pred_fct %s' % str(model_pred_fct))
             raise ValueError('model_pred must be in %s' % str(allowed_fcts))
-        self._hwc = hwc #self.hwc seems taken, leads to an error in formward if set
         self.avgpool = avgpool
-        self.layer = layer
-        if layer is None and layer_name is not None:
-            self.layer = layer_name
+        self.layer_name = layer_name
         self.device = None
 
     def _init_network(self):
@@ -178,9 +108,9 @@ class PytorchEncoderWrapper(EncoderWrapper):
             else:
                 print('using model %s on device %s' % (model.__class__.__name__, str(self.device)))
 
-        if self.layer is not None:
-            print('creating hook for layer %s' % str(self.layer))
-            self.hook = ModelHook(model, self.layer)
+        if self.layer_name is not None:
+            print('creating hook for layer %s' % str(self.layer_name))
+            self.hook = ModelHook(model, self.layer_name)
 
         if self.eval:
             model.eval()
@@ -196,7 +126,7 @@ class PytorchEncoderWrapper(EncoderWrapper):
 
     def _forward(self, inp):
         out = self._forward_network(inp)
-        if self.layer is not None:
+        if self.layer_name is not None:
             out = self.hook.out
         return out
 
@@ -317,16 +247,6 @@ class DummyEncoder(object):
 
     def print_model_summary(self, *args, **kwargs):
         pass
-
-
-class HistogramEncoder(PatchStatEncoder):
-    def __init__(self, n_bins=10, range=(0,1)):
-        self.n_bins = n_bins
-        self.range = range
-
-    def _encode(self, arr):
-        hist = np.histogram(arr, bins=self.n_bins, range=self.range)[0] / len(arr)
-        return hist
 
 
 class DensenetEncoder(PytorchEncoderWrapper):

@@ -146,12 +146,11 @@ class NicInference(object):
     def _pack(self, slide, mask, out_dir):
         raise ValueError('implement caling packing')
 
-    def _compress(self, slide_path, mask_path, out_dir):
+    def _compress(self, slide_path, mask_path, out_dir, thumbs=True):
         cargs = self.compress_args.copy()
-        cargs.update(dict(out_dir=out_dir, multiproc=False, thumbs=False, overwrite=self.overwrite),
+        cargs.update(dict(out_dir=out_dir, thumbs=thumbs, overwrite=self.overwrite),
                      data=str(slide_path), mask_dir=str(mask_path))
         out_format = self.compress_args.get('out_format','h5')
-        # ok = compress(slide_path, mask_dir=mask_path, **cargs)
         ok = compress(**cargs)
         if not ok:
             raise ValueError('compression of %s failed, params %s' % (str(slide_path), self.compress_args))
