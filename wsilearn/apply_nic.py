@@ -149,7 +149,7 @@ class NicInference(object):
     def _compress(self, slide_path, mask_path, out_dir, thumbs=True):
         cargs = self.compress_args.copy()
         cargs.update(dict(out_dir=out_dir, thumbs=thumbs, overwrite=self.overwrite),
-                     data=str(slide_path), mask_dir=str(mask_path))
+                     data=str(slide_path), mask_dir=str(mask_path), clear_locks=True)
         out_format = self.compress_args.get('out_format','h5')
         ok = compress(**cargs)
         if not ok:

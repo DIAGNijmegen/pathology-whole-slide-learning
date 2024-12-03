@@ -12,4 +12,8 @@ setup(
     packages=find_packages(),
     install_requires=requirements,  # Use the contents of requirements.txt
     long_description="Package for multiple instance learning/neural image compression with whole slide images.",
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "Operating System :: OS Independent",
+    ],
 )
