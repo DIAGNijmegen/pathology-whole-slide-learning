@@ -65,6 +65,7 @@ file4,validation,1,0
 
 There can be more splits in the configuration, which are then treated as different testing subsets and evaluated after training end. There can be also a column *category*  can be used to compute additional evaluation metrics for subsets of a split.
 
+The configuration may contain other columns. This allows to specify different targets while keeping the same data configuration. The (hot-encoded) target class columns are given via the class_names parameter separated by commas. 
 #### Example:
 
     data_config=<data_config.csv>; preprocess_dir=<compressed out_dir>
@@ -88,6 +89,9 @@ Important additional parameters:
 - net_conf.topk: number of patches with highest attention to compute the predictions
 - balance: sample compressed slides inverse to their frequency
 - early_patience: number of epochs for early stopping (default is 25)
+
+#### Multi-label tasks
+Multi-label classification is supported with the same configuration format via: --train_type=multilabel
 
 ### Evaluation
 The trained models can be evaluated on a new dataset via the evaluation script:

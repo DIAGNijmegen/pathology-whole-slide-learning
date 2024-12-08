@@ -294,15 +294,15 @@ class ClfModule(ModuleBase):
     def _add_metrics(self, phase):
         metrics = self.metrics
         n_classes = self.n_classes
-        # if torchmetrics.__version__ < '1.0.0':
-        #     print('torchmetrics version < 1.0.0:', torchmetrics.__version__)
-        #     metrics_kwargs = {}
-        # else:
-        #     print('torchmetrics version > 1.0.0:', torchmetrics.__version__)
-        if self.multilabel:
-            metrics_kwargs = dict(num_labels=n_classes, task='multilabel')
+        if torchmetrics.__version__ < '1.0.0':
+            print('torchmetrics version < 1.0.0:', torchmetrics.__version__)
+            metrics_kwargs = dict(num_classes=n_classes)
         else:
-            metrics_kwargs = dict(num_classes=n_classes, task='multiclass')
+            print('torchmetrics version > 1.0.0:', torchmetrics.__version__)
+            if self.multilabel:
+                metrics_kwargs = dict(num_labels=n_classes, task='multilabel')
+            else:
+                metrics_kwargs = dict(num_classes=n_classes, task='multiclass')
         metrics[phase] = {'acc':torchmetrics.Accuracy(**metrics_kwargs),
                           'f1':torchmetrics.F1Score(average="micro", **metrics_kwargs)
                           }
