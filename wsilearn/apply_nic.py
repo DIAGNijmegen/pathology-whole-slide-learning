@@ -95,7 +95,7 @@ def create_combined_heatmaps(npz_dir, out_dir, train_type, wsi_dir=None, overwri
 
 class NicInference(object):
     def __init__(self, model_dir, pack=False, overwrite=False, no_links=False, hmraw=False,
-                 compress_batch_size=32, compress_multiproc=False, compress_args=None, args_path=None, num_workers=0,
+                 compress_batch_size=32, compress_args=None, args_path=None, num_workers=0,
                  skip_compression=False, flat=None, **kwargs):
         self.model_dir = Path(model_dir)
         self.overwrite = overwrite
@@ -131,8 +131,6 @@ class NicInference(object):
         else:
             self.compress_args = compress_args
         self.compress_args['batch_size'] = compress_batch_size
-        # if self.compress_args.get('multiproc',False):
-        self.compress_args['multiproc'] = compress_multiproc
         self.skip_compression = skip_compression
 
         self.model = create_nic_model(**net_conf)

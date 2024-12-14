@@ -519,7 +519,6 @@ def process_arguments():
     parser.add_argument('--batch_size', type=str, required=False, default='32',
                         help='"auto" will try to determine the best batch size for the gpu')
     parser.add_argument('--overwrite', action='store_true')
-    parser.add_argument('--multiproc', action='store_true')
 
     args = parser.parse_args()
     args['batch_size'] = args.get('batch_size','32')

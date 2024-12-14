@@ -10,6 +10,13 @@ from wsilearn.utils.cool_utils import can_open_file
 from wsilearn.dl.torch_utils import print_model_summary
 from wsilearn.compress.encoders import  TimmEncoder, IncRes2Encoder, Res50Encoder, DensenetEncoder
 
+import importlib
+
+def instantiate_class(full_class_name, **kwargs):
+    module_name, class_name = full_class_name.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    cls = getattr(module, class_name)
+    return cls(**kwargs)
 
 def create_encoder(encoder, encoder_path=None, **enc_kwargs):
     if 'histossl'== encoder:
@@ -31,6 +38,9 @@ def create_encoder(encoder, encoder_path=None, **enc_kwargs):
     elif 'ctran' in encoder:
         from wsilearn.compress.ctran.ctran_encoder import CtranEncoder
         enc = CtranEncoder(model=encoder_path, **enc_kwargs)
+    elif '.' in encoder:
+        #encoder is class name to be instantiated dynamically
+        enc = instantiate_class(encoder, encoder_path=encoder_path, **enc_kwargs)
     else:
         raise ValueError('unknown encoder %s' % encoder)
 
@@ -42,8 +52,8 @@ if __name__ == '__main__':
     # enc = create_encoder('vicreg_res50')
     # enc = create_encoder('hipt')
     # enc = create_encoder('res50')
-    enc = create_encoder('mtdp_res50')
-    # enc = create_encoder('lunitbt')
+    # enc = create_encoder('mtdp_res50')
+    enc = create_encoder('wsilearn.compress.lunit_encoders.LunitBTEncoder')
     inp = np.zeros((6,256,256,3))
     out = enc(inp)
     print(inp.shape, out.shape, out.dtype)
