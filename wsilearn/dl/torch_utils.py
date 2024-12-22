@@ -59,10 +59,13 @@ def get_module_names_dict(model):
 def to_numpy(var):
     if is_ndarray(var):
         return var
-    val = var.detach().cpu().numpy()
-    if is_iterable(val) and len (val.shape)==0: #0-sized array
-        val = val.item()
-    return val
+    var = var.detach().cpu()
+    if var.dtype==torch.bfloat16:
+        var = var.float()
+    var = var.numpy()
+    if is_iterable(var) and len (var.shape)==0: #0-sized array
+        var = var.item()
+    return var
 
 def to_cpu(*tensors):
     results = [tensor.detach().cpu() for tensor in tensors]
@@ -80,7 +83,6 @@ def determine_max_input_volume(model, start_size, device=None, reserve=0.1, trai
     if device is None:
         device = create_device(benchmark=False)
     print('determine_max_input_volume...')
-    gpu_mem(print_info=True)
     print("CUDA memory allocated:", torch.cuda.memory_allocated())
     m = deepcopy(model)
     m = m.to(device)
@@ -198,7 +200,6 @@ def determine_max_input_volume(model, start_size, device=None, reserve=0.1, trai
     margin_size[0] = margin_batch_size
     print('working size: %s, volume: %d, ~margin_size: %s, volume-margin: %d' %\
           (str(working_size), vol, str(margin_size), margin_vol))
-    gpu_mem(print_info=True)
     print("CUDA memory allocated:", torch.cuda.memory_allocated())
     print('determine_max_input_volume finished')
     return margin_size, margin_vol

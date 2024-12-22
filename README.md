@@ -93,6 +93,37 @@ Important additional parameters:
 #### Multi-label tasks
 Multi-label classification is supported with the same configuration format via: --train_type=multilabel
 
+### Survival or Recurrence prediction
+The goal is here to predict the time to event. As loss function we use the CoxPHLoss from pycox (https://github.com/havakv/pycox).
+As this loss function is based on the ordering of the samples, this requires a batch size > 1 (e.g. 32 or 64).
+The batch should contain non-censored samples to compute properly - this is ensured via the balance flag.
+Training with more then one sample in a batch requires also cropping/padding, therefore crop_size (e.g. 120: 120 patches x 120 patches) needs be specified.
+This determines the size of randomly cropped sections of the compressed slides.
+In the configuration two target columns need to be specified: event column (0,1) and the time column, for example:
+
+*name,split,event,time*  
+file1,training,0,11  
+file2,training,1,2  
+file3,training,1,7  
+file4,validation,0,2  
+file5,validation,1,8  
+file6,validation,1,5  
+
+#### Example:
+
+    data_config=<data_config.csv>; preprocess_dir=<compressed out_dir>
+    encoder=res50; enc_dim=1024; dropout=0.25; seed=1
+    monitor=val_cind #use validation concordance index as early stopping criterium
+    python3 wsilearn/train_nic.py	\
+    	 --data_config=$data --preprocess_dir=$preprocess_dir --out_dir=$out_dir \
+    	 --precision=16 --autoname --enc_dim=$enc_dim \
+    	 --train_type=surv --class_names=event,time \
+    	 --batch_size=64 --crop_size=120 --balance \
+    	 --monitor=$monitor \
+    	 --net_conf.name=attnet --net_conf.dropout=$dropout --net_conf.out_dim=1 \
+    	 --num_workers=4 --seed=$seed \
+    	 --no_heatmaps --no_out
+
 ### Evaluation
 The trained models can be evaluated on a new dataset via the evaluation script:
 
