@@ -16,7 +16,7 @@ except:
         WholeSlideImageWriterBase
 from wholeslidedata.image.wholeslideimage import WholeSlideImage
 
-from wsilearn.utils.cool_utils import showims, take_closest_smallest_numer, mkdir
+from wsilearn.utils.cool_utils import showims, take_closest_smallest_number, mkdir
 
 def take_closest_level(spacings, spacing):
     pos = bisect_left(spacings, spacing)
@@ -190,7 +190,7 @@ class ArrayImageWriter(object):
         from ..wsi.wsi_utils import write_array_with_writer
         tile_size = self.tile_size
         if min(arr.shape[:2]) < tile_size:
-            tile_size = take_closest_smallest_numer([8, 16, 32, 64, 128, 256], min(arr.shape[:2]))
+            tile_size = take_closest_smallest_number([8, 16, 32, 64, 128, 256], min(arr.shape[:2]))
         if len(arr.shape)==2:
             tile_shape = (tile_size, tile_size)
         else:

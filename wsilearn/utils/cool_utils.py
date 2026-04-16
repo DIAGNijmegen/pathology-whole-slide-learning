@@ -929,7 +929,7 @@ def print_env_info(verbose=True):
         print('numpy version', numpy.__version__)
 
 
-def take_closest_smallest_numer(l, number):
+def take_closest_smallest_number(l, number):
     l = sorted(l)
     l = l+[l[-1]] #so that the loop doesnt have to handle the last number in list
     for i,val in enumerate(l):

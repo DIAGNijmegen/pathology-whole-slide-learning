@@ -95,7 +95,7 @@ def create_combined_heatmaps(npz_dir, out_dir, train_type, wsi_dir=None, overwri
 
 class NicInference(object):
     def __init__(self, model_dir, pack=False, overwrite=False, no_links=False, hmraw=False,
-                 compress_batch_size=32, compress_args=None, args_path=None, num_workers=0,
+                 compress_batch_size=32, compress_stride=None, compress_args=None, args_path=None, num_workers=0,
                  skip_compression=False, flat=None, **kwargs):
         self.model_dir = Path(model_dir)
         self.overwrite = overwrite
@@ -104,13 +104,6 @@ class NicInference(object):
         self.no_links = no_links
         self.hmraw = hmraw
 
-        # self.clf_thresholds = None
-        # val_results_path = self.model_dir/'eval_validation/results.json'
-        # if val_results_path.exists():
-        #     results = read_json_dict(self.model_dir/'eval_validation/results.json')
-        #     self.clf_thresholds = results.get('validation',{}).get('clf_thresholds',None)
-        # else:
-        #     print('validation results not found')
         if args_path is None:
             args_path = self.model_dir/ 'args.json'
         self.args = read_json_dict(args_path)
@@ -130,7 +123,10 @@ class NicInference(object):
             self.compress_args = read_json_dict(compress_args)
         else:
             self.compress_args = compress_args
-        self.compress_args['batch_size'] = compress_batch_size
+        if compress_batch_size is not None:
+            self.compress_args['batch_size'] = compress_batch_size
+        if compress_stride is not None:
+            self.compress_args['stride'] = compress_stride
         self.skip_compression = skip_compression
 
         self.model = create_nic_model(**net_conf)
